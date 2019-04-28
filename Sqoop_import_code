@@ -1,0 +1,151 @@
+Sqoop Import Examples with all type of arguments:
+
+1. Transferring an Entire Table: MySQL to HDFS
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments
+  
+So, in default the result of the command will be comma separated CSV file with the directory name as table name and inside that the data is stored in multiple files based on the number of map jobs in the import command. Default number is 4.
+% hadoop fs -ls departments/part-m-*
+
+2. Importing a subset of Data:
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments \
+  --where "country = 'USA'"
+
+When using the --where parameter, keep in mind the parallel nature of Sqoop transfers. Data will be transferred in several concurrent tasks. Any expensive function call will put a significant performance burden on your database server. 
+Advanced functions could lock certain tables, preventing Sqoop from transferring data in parallel. This will adversely affect transfer performance. For efficient advanced filtering, run the filtering query on your database prior to import,
+save its output to a temporary table and run Sqoop to import the temporary table into Hadoop without the --where parameter.
+
+3. Importing subset of columns:
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera --password cloudera \
+  --table departments \
+  --columns "department_id, department_name, country_code'"
+
+4. Protecting Password:
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera -P \
+  --table departments \
+
+Once you enter this command, terminal will instruct Sqoop to prompt the user for entering the password.
+
+5. Reading the password from a file:
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password-file my_sqoop_pwd \
+  --table departments \
+
+In order for this method to be secure, you need to store the file inside your home directory and set the file’s permissions to 400. So, there will not be any access to open and fetch the content.
+
+echo "my-secret-password" > sqoop.password
+hadoop dfs -put sqoop.password /user/$USER/sqoop.password
+hadoop dfs -chown 400 /user/$USER/sqoop.password
+rm sqoop.password
+
+sqoop import --password-file /user/$USER/sqoop.password
+
+6. File format other than CSV (default):
+Sqoop supports three different file formats; one is text, and other two are binary. The binary formats are AVRO and Hadoop's SequenceFile
+
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments \
+  --as-sequencefile
+
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments \
+  --as-avrodatafile
+
+7. Compressing Imported data:
+You want to decrease the overall size occupied on HDFS by using compression for generated files
+
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments \
+  --compress
+
+When you use only (--compress) it takes the default Gzip codec and saves the files with .gz extension.
+You can use other codec's as well as per the Apache standards. For example here we have used BZip2 codec instead of Gzip as follows (it stores files with ext as .bz2)
+
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments \
+  --compress \
+  --compression-codec org.apache.hadoop.io.compress.BZip2Codec
+
+Splittable and Not Splittable (in terms of map tasks) compression codes:
+		Splittable	
+		BZip2, Lzop	
+
+		Not Splittable
+		Gzip, Snappy
+
+8. Controlling parallelism:
+As told previously sqoop by default uses four concurrent map tasks data to Hadoop. Transferring bigger tables with more concurrent tasks should decrease the time required to transfer all data.
+
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments \
+  --num-mappers 10
+  
+Or you can also specify in other way like:
+
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments \
+  -m 10
+
+9. Override Type Mapping:
+The default type mapping that sqoop provides between RDMBS and Hadoop usually works well. You have also other use cases requiring you to override the mapping.
+The Sqoop ability to override default type mapping using parameter --map-column-java. For ex. To override the type of column id to java type Long:
+
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments \
+  --map-column-java id=Long
+
+For example, if you need to change mapping in three columns c1, c2, and c3 to Float, String, and String, respectively, then your Sqoop command line would contain the following fragment.
+
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments \
+  --map-column-java c1=Float,c2=String,c3=String
+
+10. Encoding NULL Values:
+
+Sqoop encodes database NULL values using the null string constant. Your downstream processing (ex. Hive, queries, custom MapReduce Job or Pig scripts) uses a different constant doe encoding missing values. You would like to override the default one by using --null-string and --null-non-string.
+	a. For text-based columns that are defined with type VARCHAR, CHAR, NCHAR, TEXT, and a few others, you can override the default substitution string using the parameter --null-string. 
+	b. For all other column types, you can override the substitution string with the --null-non-string parameter.
+% sqoop import \
+  --connect jdbc:mysql://localhost:3030/product_db \
+  --username cloudera \
+  --password cloudera \
+  --table departments \
+  --null-string '\\N' \
+  --null-non-string '\\N'
